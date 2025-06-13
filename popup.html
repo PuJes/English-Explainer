@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>English Explainer</title>
+  <style>
+    body {
+      width: 320px;
+      padding: 15px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    h1 {
+      font-size: 18px;
+      color: #4285f4;
+      margin-top: 0;
+    }
+    .description {
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+    .settings {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+    .api-input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+    }
+    select.api-input {
+      background-color: white;
+    }
+    button {
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      padding: 8px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #3367d6;
+    }
+    .status {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 14px;
+      display: none;
+    }
+    .success {
+      background-color: #e6f4ea;
+      color: #137333;
+    }
+    .error {
+      background-color: #ffebee;
+      color: #d32f2f;
+    }
+    .instructions {
+      margin-top: 15px;
+      font-size: 13px;
+    }
+    .instructions ol {
+      padding-left: 20px;
+      margin: 8px 0;
+    }
+    .note {
+      margin-top: 15px;
+      padding: 10px;
+      background-color: #e8f0fe;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #174ea6;
+    }
+    .api-toggle {
+      margin: 15px 0;
+    }
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+    .toggle-label input {
+      margin-right: 8px;
+    }
+    .free-api-option {
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      border: 1px solid #ddd;
+    }
+    .free-api-option h3 {
+      font-size: 14px;
+      margin: 0 0 10px 0;
+      color: #333;
+    }
+    .warning {
+      color: #ff6d00;
+      font-size: 12px;
+      margin-top: 5px;
+    }
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      margin: 15px 0;
+    }
+    .action-buttons button {
+      flex: 1;
+      text-align: center;
+    }
+    .primary-btn {
+      background-color: #4285f4;
+    }
+  </style>
+</head>
+<body>
+  <h1>English Explainer</h1>
+  
+  <div class="description">
+    帮助您理解英语内容，提供更深层次的英语语义解析，促进英语思维养成。
+  </div>
+  
+  <div class="action-buttons">
+    <button id="openSidebarBtn" class="primary-btn">打开侧边栏</button>
+  </div>
+  
+  <div class="api-toggle">
+    <label class="toggle-label">
+      <input type="checkbox" id="useApiToggle"> 使用AI API（提供更高质量的解释）
+    </label>
+  </div>
+  
+  <div id="apiSettings" class="settings" style="display: none;">
+    <div class="free-api-option">
+      <label class="toggle-label">
+        <input type="checkbox" id="useFreeApiToggle"> 使用免费API
+      </label>
+      <p class="warning">注意：免费API有使用限制，可能会不稳定或延迟较高</p>
+    </div>
+    
+    <div id="customApiSettings">
+      <label for="apiType">API类型:</label>
+      <select id="apiType" class="api-input">
+        <option value="openai">OpenAI</option>
+        <option value="deepseek">DeepSeek AI</option>
+      </select>
+      
+      <div id="openaiSettings">
+        <label for="apiKey">OpenAI API密钥:</label>
+        <input type="password" id="apiKey" class="api-input" placeholder="sk-...">
+      </div>
+      
+      <div id="deepseekSettings" style="display: none;">
+        <label for="deepseekApiKey">DeepSeek API密钥:</label>
+        <input type="password" id="deepseekApiKey" class="api-input" placeholder="sk-...">
+        
+        <label for="deepseekModel">模型:</label>
+        <select id="deepseekModel" class="api-input">
+          <option value="deepseek-chat">deepseek-chat</option>
+          <option value="deepseek-chat-v3-0324">deepseek-chat-v3-0324</option>
+          <option value="deepseek-v3">deepseek-v3</option>
+          <option value="deepseek-reasoner">deepseek-reasoner</option>
+          <option value="deepseek-coder">deepseek-coder</option>
+        </select>
+        
+        <button id="testDeepseekApiBtn" style="margin-top: 10px; background-color: #34a853;">测试API连接</button>
+      </div>
+    </div>
+    
+    <button id="saveBtn">保存API设置</button>
+  </div>
+  
+  <div id="status" class="status"></div>
+  
+  <div class="instructions">
+    <strong>使用方法:</strong>
+    <ol>
+      <li>在任意网页上选中英文文本</li>
+      <li>有多种触发方式:
+        <ul>
+          <li>右键点击并选择"用英语解释所选文本"</li>
+          <li>点击选中文本旁出现的悬浮按钮 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></li>
+          <li>点击扩展图标，然后点击"打开侧边栏"按钮</li>
+        </ul>
+      </li>
+      <li>在右侧边栏查看详细解释</li>
+      <li>侧边栏打开后，再次选中新的文本会自动显示解释，无需再次点击</li>
+      <li>您也可以直接在侧边栏中输入或粘贴英文文本进行解释，支持Ctrl+Enter快捷键</li>
+    </ol>
+  </div>
+  
+  <div class="note">
+    <p><strong>提示:</strong> 使用AI API可获得更高质量的解释，但需要API密钥。不使用API时，插件将使用内置解释功能。</p>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html> 
