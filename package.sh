@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 版本号
-VERSION="1.0.0"
+VERSION="2.0.0"
 
 # 创建临时目录
 TEMP_DIR="English_Explainer_v${VERSION}"
