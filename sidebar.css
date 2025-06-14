@@ -3,42 +3,50 @@
  */
 
 .english-explainer-sidebar {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 320px;
-  height: 100vh;
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  width: 400px;
+  height: 100vh !important;
   background-color: white;
-  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2);
-  z-index: 2147483647; /* 最高层级 */
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+  z-index: 2147483647 !important;
+  transform: translateX(100%);
   transition: transform 0.3s ease;
   display: flex;
   flex-direction: column;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  /* 确保完全覆盖，不受页面样式影响 */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
+  line-height: 1.4;
   color: #333;
-  overflow: hidden;
 }
 
-.english-explainer-sidebar.hidden {
-  transform: translateX(100%);
+.english-explainer-sidebar:not(.hidden) {
+  transform: translateX(0) !important;
 }
 
 .sidebar-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid #e1e4e8;
+  padding: 4px 16px;
+  margin: 0;
+  background: linear-gradient(135deg, #4285f4 0%, #5a9fd4 100%);
+  color: white;
+  border-bottom: none;
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #4285f4;
-  color: white;
+  min-height: 32px;
 }
 
 .sidebar-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
-  cursor: pointer;
+  flex: 1;
 }
 
 .close-btn {
@@ -47,9 +55,15 @@
   color: white;
   font-size: 16px;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 2px;
+  border-radius: 3px;
   transition: background-color 0.2s;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .close-btn:hover {
@@ -58,16 +72,119 @@
 
 .sidebar-content {
   flex: 1;
-  padding: 16px;
+  padding: 12px 16px;
   overflow-y: auto;
-  line-height: 1.5;
+  background: white;
 }
 
 .original-text {
-  margin-bottom: 20px;
-  padding: 12px;
-  background-color: #f6f8fa;
+  margin: 0 0 12px 0;
+  padding: 10px 14px;
+  background: #f8f9fa;
   border-radius: 6px;
+  border-left: 3px solid #4285f4;
+  border-top: 1px solid #e0e0e0;
+  border-right: 1px solid #e0e0e0;
+  border-bottom: 1px solid #e0e0e0;
+  max-height: 100px;
+  overflow-y: auto;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.original-text h3 {
+  margin: 0 0 4px 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #5f6368;
+  display: flex;
+  align-items: center;
+}
+
+.original-text h3 .text-icon {
+  width: 12px;
+  height: 12px;
+  margin-right: 3px;
+}
+
+.original-text p {
+  font-size: 14px;
+  line-height: 1.2;
+  color: #202124;
+  margin: 0 0 3px 0;
+  font-weight: 400;
+}
+
+.listen-btn {
+  background: none;
+  border: 1px solid #e8eaed;
+  color: #4285f4;
+  padding: 2px 4px;
+  border-radius: 12px;
+  font-size: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  transition: all 0.2s ease;
+  margin-top: 1px;
+}
+
+.listen-btn:hover {
+  background: #4285f4;
+  color: white;
+}
+
+.listen-btn .sound-icon {
+  width: 10px;
+  height: 10px;
+}
+
+/* 标签页样式 */
+.tabs {
+  display: flex;
+  background: #f8f9fa;
+  margin: 0 0 8px 0;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid #e8eaed;
+}
+
+.tab {
+  flex: 1;
+  padding: 8px 6px;
+  text-align: center;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: #5f6368;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.tab.active {
+  color: #4285f4;
+  border-bottom-color: #4285f4;
+  background: rgba(66, 133, 244, 0.04);
+}
+
+.tab:hover:not(.active) {
+  color: #4285f4;
+  background: rgba(66, 133, 244, 0.02);
+}
+
+/* 标签页内容样式 */
+.tab-content {
+  display: none;
+  padding: 8px 0;
+  background: white;
+  border: none;
+}
+
+.tab-content.active {
+  display: block;
 }
 
 .original-text h4,
@@ -76,11 +193,6 @@
   font-size: 15px;
   font-weight: 600;
   color: #24292e;
-}
-
-.original-text p {
-  font-style: italic;
-  color: #555;
 }
 
 .explanation {
@@ -389,32 +501,33 @@
 
 /* 新增的JSON响应样式 */
 .section {
-  margin-bottom: 24px;
-  padding: 16px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .section h4 {
   color: #4285f4;
-  margin: 0 0 16px 0;
-  font-size: 16px;
+  margin: 0 0 12px 0;
+  font-size: 15px;
   font-weight: 600;
 }
 
 .section h5 {
   color: #333;
-  margin: 12px 0 8px 0;
-  font-size: 14px;
-  font-weight: 600;
+  margin: 8px 0 6px 0;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .definition-box {
   background: #f8f9fa;
-  padding: 12px;
+  padding: 10px 12px;
   border-radius: 6px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  border: none;
+  border-left: 3px solid #4285f4;
 }
 
 .subsection {
@@ -422,113 +535,464 @@
 }
 
 .bullet-list {
-  list-style-type: none;
+  list-style: none;
   padding: 0;
-  margin: 0;
+  margin: 12px 0;
 }
 
 .bullet-list li {
-  position: relative;
-  padding-left: 20px;
-  margin-bottom: 8px;
-  line-height: 1.5;
+  padding: 4px 0 4px 20px;
+  margin-bottom: 4px;
+  line-height: 1.3;
 }
 
-.bullet-list li:before {
-  content: "•";
-  color: #4285f4;
+.bullet-list li:last-child {
+  border-bottom: none;
+}
+
+.bullet-list li::before {
+  content: '';
   position: absolute;
-  left: 0;
+  left: 8px;
+  top: 16px;
+  width: 6px;
+  height: 6px;
+  background: #4285f4;
+  border-radius: 50%;
 }
 
-.vocab-item {
-  background: #fff;
-  border: 1px solid #e1e4e8;
-  border-radius: 6px;
-  padding: 12px;
+.vocab-item, .alt-card {
+  background: transparent;
+  border: none;
+  padding: 12px 0;
   margin-bottom: 12px;
+  border-bottom: 1px solid #f1f3f4;
+}
+
+.vocab-item:last-child {
+  border-bottom: none;
 }
 
 .vocab-header {
   display: flex;
-  align-items: center;
-  margin-bottom: 8px;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
 }
 
 .vocab-word {
-  font-weight: 600;
-  color: #24292e;
-  margin-right: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #1c1e21;
 }
 
 .vocab-type {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background-color: #e8f4fd;
+  color: #4285f4;
+}
+
+.vocab-definition, .vocab-usage, .vocab-synonyms {
   font-size: 12px;
+  line-height: 1.3;
+  margin-bottom: 4px;
   color: #666;
-  background: #f1f3f4;
-  padding: 2px 6px;
-  border-radius: 4px;
 }
 
-.vocab-definition {
-  margin-bottom: 8px;
-  line-height: 1.5;
+/* 加粗"Usage:"和"Synonyms:"标签 */
+.vocab-usage::before {
+  content: "Usage: ";
+  font-weight: 600; /* 加粗 */
+  color: #333;
 }
 
-.vocab-usage, .vocab-synonyms {
+.vocab-synonyms::before {
+  content: "Synonyms: ";
+  font-weight: 600; /* 加粗 */
+  color: #333;
+}
+
+/* 或者如果HTML中已经包含了这些标签，直接加粗 */
+.vocab-usage {
+  font-weight: 400;
+}
+
+.vocab-usage strong,
+.vocab-synonyms strong {
+  font-weight: 600;
+  color: #333;
+}
+
+.vocab-example {
   font-size: 13px;
-  color: #666;
-  margin-top: 4px;
+  line-height: 1.5;
+  color: #606770;
+  font-style: italic;
+  margin-bottom: 8px;
 }
 
-.alt-card {
-  background: #fff;
-  border: 1px solid #e1e4e8;
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 12px;
+.vocab-actions {
+  margin-top: 8px;
+  gap: 12px;
+}
+
+.vocab-btn {
+  font-size: 11px;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  color: #4285f4;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.vocab-btn span {
+  width: 12px;
+  height: 12px;
+  margin-right: 3px;
+  background-size: contain;
+}
+
+.sound-icon {
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234285f4"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>');
+}
+
+.save-icon {
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234285f4"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z"/></svg>');
+}
+
+/* 替代表达标签页样式 */
+.alternatives-content {
+  padding: 0;
 }
 
 .alt-phrase {
-  font-weight: 600;
-  color: #24292e;
-  margin-bottom: 8px;
+  font-size: 14px;
+  margin-bottom: 4px;
+  line-height: 1.2;
+  color: #1c1e21;
 }
 
 .alt-meta {
+  margin-bottom: 6px;
+}
+
+.alt-tag {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background-color: #f1f3f4;
+  color: #606770;
+}
+
+.alt-tag.formal {
+  background-color: #e8f4fd;
+  color: #4285f4;
+}
+
+.alt-tag.informal {
+  background-color: #fce8e6;
+  color: #ea4335;
+}
+
+.alt-example {
+  font-size: 12px;
+  line-height: 1.3;
+  color: #606770;
+  font-style: italic;
+  margin-bottom: 4px;
+}
+
+.alt-difference {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1c1e21;
+}
+
+/* 按钮悬停效果 */
+.listen-btn, .vocab-btn {
+  transition: all 0.2s ease;
+}
+
+.listen-btn:hover, .vocab-btn:hover {
+  transform: translateY(-1px);
+  opacity: 0.9;
+}
+
+.part-of-speech {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background-color: #e8f4fd;
+  color: #4285f4;
+}
+
+.vocab-placeholder, .alt-placeholder {
+  text-align: center;
+  padding: 40px 20px;
+  color: #606770;
+  font-style: italic;
+}
+
+.vocab-item:last-child {
+  border-bottom: none;
+}
+
+.vocab-header {
+  margin-bottom: 6px;
+  align-items: flex-start;
+}
+
+.vocab-actions {
+  margin-top: 8px;
+  gap: 12px;
+}
+
+.vocab-btn {
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.vocab-btn span {
+  width: 12px;
+  height: 12px;
+  margin-right: 3px;
+}
+
+.sound-icon {
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234285f4"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>');
+}
+
+.save-icon {
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234285f4"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z"/></svg>');
+}
+
+/* 替代表达标签页样式 */
+.alternatives-content {
+  padding: 0;
+}
+
+.alt-card {
+  background: transparent;
+  border: none;
+  padding: 12px 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #f1f3f4;
+  border-left: 3px solid #34a853;
+  padding-left: 12px;
+}
+
+.alt-card:last-child {
+  border-bottom: none;
+}
+
+.alt-phrase {
+  font-size: 16px;
+  font-weight: 500;
+  color: #202124;
   margin-bottom: 8px;
 }
 
 .alt-tag {
-  display: inline-block;
-  font-size: 12px;
-  color: #666;
   background: #f1f3f4;
-  padding: 2px 6px;
-  border-radius: 4px;
+  color: #5f6368;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   margin-right: 6px;
 }
 
-.alt-description {
-  margin-bottom: 8px;
-  line-height: 1.5;
+/* 标签页内容区域优化 */
+.tab-content {
+  padding: 8px 0;
+  max-height: none;
+  overflow: visible;
 }
 
-.alt-example {
-  font-size: 13px;
-  color: #666;
-  font-style: italic;
+/* 词汇表紧凑布局 */
+.vocab-header {
+  margin-bottom: 6px;
+  align-items: flex-start;
 }
 
-/* 错误提示样式 */
-.error {
-  background: #fef0f0;
-  color: #f56c6c;
-  padding: 12px;
-  border-radius: 6px;
-  margin-bottom: 16px;
+.vocab-actions {
+  margin-top: 8px;
+  gap: 12px;
 }
 
-.error h4 {
-  color: #f56c6c;
-  margin: 0 0 8px 0;
+/* 词汇表紧凑布局 */
+.vocab-item {
+  position: relative;
+  padding: 8px 0 8px 12px;
+  border-left: 2px solid #e8f0fe;
+  transition: border-color 0.2s ease;
+}
+
+.vocab-item:hover {
+  border-left-color: #4285f4;
+  background-color: rgba(66, 133, 244, 0.02);
+}
+
+/* 优化整体滚动条 */
+.sidebar-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-content::-webkit-scrollbar-track {
+  background: #f1f3f4;
+  border-radius: 2px;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(66, 133, 244, 0.5) 0%, rgba(66, 133, 244, 0.8) 100%);
+  transform: scaleX(1.2);
+}
+
+/* Original Text 区域滚动条 */
+.original-text::-webkit-scrollbar {
+  width: 4px;
+}
+
+.original-text::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.original-text::-webkit-scrollbar-thumb {
+  background: rgba(66, 133, 244, 0.3);
+  border-radius: 2px;
+}
+
+.original-text::-webkit-scrollbar-thumb:hover {
+  background: rgba(66, 133, 244, 0.5);
+}
+
+/* Firefox 滚动条样式 */
+.sidebar-content {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(66, 133, 244, 0.4) rgba(0, 0, 0, 0.02);
+}
+
+/* 原文显示优化 */
+.original-text {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e8f0fe 100%);
+  border: 1px solid #e8eaed;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  position: relative;
+}
+
+.original-text::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(to bottom, #4285f4, #34a853);
+  border-radius: 2px 0 0 2px;
+}
+
+.original-text p {
+  font-size: 16px;
+  line-height: 1.6;
+  color: #202124;
+  margin: 8px 0 0 0;
+  font-weight: 400;
+}
+
+/* 词汇项目卡片化 */
+.vocab-item {
+  background: #fff;
+  border: 1px solid #e8eaed;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.vocab-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.vocab-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.vocab-word {
+  font-size: 18px;
+  font-weight: 600;
+  color: #202124;
+}
+
+.vocab-type {
+  background: linear-gradient(135deg, #e8f0fe 0%, #f3e8ff 100%);
+  color: #4285f4;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 现代按钮设计 */
+.vocab-btn, .listen-btn {
+  background: none;
+  border: 1px solid #e8eaed;
+  color: #4285f4;
+  padding: 8px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vocab-btn:hover, .listen-btn:hover {
+  background: #4285f4;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.3);
+}
+
+.vocab-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* 动画效果 */
+.tab-content {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 } 

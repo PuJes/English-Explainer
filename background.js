@@ -69,25 +69,152 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // 监听来自content script的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('Background received message:', request); // 调试日志
+  
   if (request.action === 'getApiSettings') {
-    // 从存储中获取API设置
-    chrome.storage.sync.get(
-      [
-        'useApi', 
-        'useFreeApi',
-        'apiType', 
-        'apiKey', 
-        'deepseekApiKey',
-        'deepseekModel'
-      ], 
-      (result) => {
-        log('Retrieved API settings, API enabled: ' + (result.useApi ? 'Yes' : 'No'));
-        if (result.useFreeApi) {
-          log('Using free API');
+    // 记录请求
+    log('收到获取API设置请求');
+    
+    try {
+      // 从存储中获取API设置
+      chrome.storage.sync.get(
+        [
+          'useApi', 
+          'useFreeApi',
+          'apiType', 
+          'apiKey', 
+          'deepseekApiKey',
+          'deepseekModel'
+        ], 
+        (result) => {
+          if (chrome.runtime.lastError) {
+            log('获取API设置时出错: ' + chrome.runtime.lastError.message);
+            sendResponse({ error: chrome.runtime.lastError.message });
+            return;
+          }
+          
+          log('成功获取API设置');
+          // 发送响应前记录日志（不包含敏感信息）
+          log('API启用状态: ' + (result.useApi ? '是' : '否'));
+          if (result.useFreeApi) {
+            log('使用免费API');
+          }
+          
+          sendResponse(result);
         }
-        sendResponse(result);
-      }
-    );
+      );
+    } catch (error) {
+      log('处理API设置请求时出错: ' + error.message);
+      sendResponse({ error: error.message });
+    }
+    
     return true; // 异步响应
   }
-}); 
+  
+  // 新增：处理重置插件请求
+  else if (request.action === 'resetPlugin') {
+    console.log('Processing reset plugin request'); // 调试日志
+    
+    // 获取当前活动标签页
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      if (chrome.runtime.lastError) {
+        console.error('Query tabs error:', chrome.runtime.lastError);
+        sendResponse({success: false, error: chrome.runtime.lastError.message});
+        return;
+      }
+      
+      if (tabs && tabs.length > 0) {
+        const activeTab = tabs[0];
+        console.log('Sending reset message to tab:', activeTab.id); // 调试日志
+        
+        // 向content script发送重置消息
+        chrome.tabs.sendMessage(activeTab.id, {action: 'resetPluginState'}, function(response) {
+          if (chrome.runtime.lastError) {
+            console.error('Send reset message error:', chrome.runtime.lastError);
+            sendResponse({success: false, error: chrome.runtime.lastError.message});
+          } else {
+            console.log('Reset message sent successfully, response:', response); // 调试日志
+            sendResponse({success: true, contentResponse: response});
+          }
+        });
+      } else {
+        console.error('No active tab found');
+        sendResponse({success: false, error: 'No active tab found'});
+      }
+    });
+    
+    // 返回true表示异步响应
+    return true;
+  }
+
+  if (request.action === 'testAPI') {
+    // 处理API测试请求
+    handleAPITest(request.data)
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true; // 保持消息通道开启
+  }
+
+  if (request.action === 'testDeepseekApi') {
+    testDeepseekApi(request.data)
+      .then(sendResponse)
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true; // 保持消息通道开启
+  }
+});
+
+async function handleAPITest(data) {
+  try {
+    // 发送一个简单的测试请求到API
+    const response = await fetch(data.apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${data.apiKey}`
+      },
+      body: JSON.stringify({
+        model: data.apiModel,
+        messages: [
+          { role: "user", content: "Test connection" }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function testDeepseekApi(data) {
+  try {
+    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${data.apiKey}`
+      },
+      body: JSON.stringify({
+        model: data.model,
+        messages: [{
+          role: "user",
+          content: "Test connection"
+        }]
+      })
+    });
+    
+    const responseData = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(responseData.error?.message || `HTTP error! status: ${response.status}`);
+    }
+    
+    return { success: true, data: responseData };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+} 

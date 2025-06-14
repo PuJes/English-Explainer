@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "English Explainer",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "用英语解释英语，帮助你形成英语思维",
   "icons": {
     "128": "images/翻译插件图标.png"
@@ -27,14 +27,15 @@
   "permissions": [
     "contextMenus",
     "storage",
-    "scripting"
+    "scripting",
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
   "web_accessible_resources": [
     {
-      "resources": ["sidebar.html", "images/*"],
+      "resources": ["sidebar.html", "images/*", "sidebar.css"],
       "matches": ["<all_urls>"]
     }
   ]

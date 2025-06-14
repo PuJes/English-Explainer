@@ -121,6 +121,19 @@
     .primary-btn {
       background-color: #4285f4;
     }
+    .secondary-btn {
+      background-color: #757575;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-left: 8px;
+    }
+    .secondary-btn:hover {
+      background-color: #616161;
+    }
   </style>
 </head>
 <body>
@@ -130,8 +143,9 @@
     帮助您理解英语内容，提供更深层次的英语语义解析，促进英语思维养成。
   </div>
   
-  <div class="action-buttons">
+  <div class="button-group">
     <button id="openSidebarBtn" class="primary-btn">打开侧边栏</button>
+    <button id="resetPluginBtn" class="secondary-btn">重置插件</button>
   </div>
   
   <div class="api-toggle">

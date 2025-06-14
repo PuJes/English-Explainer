@@ -23,16 +23,37 @@ function debounce(func, wait) {
 function _handleSelectionChange() {
   const selectedText = getSelectedText();
   
-  if (!selectedText) {
+  if (selectedText.length === 0) {
     hideFloatingButton();
     return;
   }
   
-  // 如果侧边栏打开，自动翻译选中的文本
+  // 检查选择是否在侧边栏内 - 新增检查逻辑
+  const selection = window.getSelection();
+  if (selection.rangeCount > 0) {
+    const range = selection.getRangeAt(0);
+    let container = range.commonAncestorContainer;
+    
+    // 如果是文本节点，获取其父元素
+    if (container.nodeType === Node.TEXT_NODE) {
+      container = container.parentElement;
+    }
+    
+    // 检查是否在侧边栏内
+    const sidebarElement = container.closest('#english-explainer-sidebar');
+    if (sidebarElement) {
+      console.log('Selection is inside sidebar, ignoring...');
+      hideFloatingButton(); // 隐藏悬浮按钮
+      return; // 直接返回，不进行翻译处理
+    }
+  }
+  
+  // 原有的处理逻辑继续执行
   if (isSidebarOpen && selectedText.length > 0) {
     console.log("Sidebar is open, auto translating:", selectedText);
-    explainText(selectedText);
-    hideFloatingButton(); // 不需要显示悬浮按钮
+    debounce(() => {
+      explainText(selectedText);
+    }, 500)();
     return;
   }
   
@@ -101,7 +122,8 @@ function initializeExtension() {
   
   // 注册消息监听器
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log("Message received:", request);
+    console.log("Content script received message:", request); // 调试日志
+    
     if (request.action === 'explainText' && request.text) {
       console.log("Processing text:", request.text);
       explainText(request.text);
@@ -110,10 +132,17 @@ function initializeExtension() {
       console.log("Opening sidebar");
       openSidebar();
       sendResponse({success: true});
-    } else if (request.action === 'resetStatus') {
-      console.log("Resetting plugin status");
-      resetPluginState();
-      sendResponse({success: true});
+    } else if (request.action === 'resetPluginState') {
+      console.log('Processing reset plugin state request'); // 调试日志
+      try {
+        resetPluginState();
+        console.log('Reset plugin state completed successfully'); // 调试日志
+        sendResponse({success: true, message: 'Plugin state reset successfully'});
+      } catch (error) {
+        console.error('Reset plugin state error:', error);
+        sendResponse({success: false, error: error.message});
+      }
+      return true; // 表示异步响应
     }
     return true;
   });
@@ -250,6 +279,23 @@ function createSidebar() {
   
   // 添加事件监听器
   sidebar.querySelector('.close-btn').addEventListener('click', hideSidebar);
+  
+  // 新增：阻止侧边栏内的选择事件冒泡到页面级别
+  sidebar.addEventListener('mouseup', function(e) {
+    e.stopPropagation();
+    console.log('Sidebar mouseup event stopped');
+  });
+  
+  sidebar.addEventListener('selectstart', function(e) {
+    e.stopPropagation();
+    console.log('Sidebar selectstart event stopped');
+  });
+  
+  // 添加选择结束事件监听
+  sidebar.addEventListener('selectionchange', function(e) {
+    e.stopPropagation();
+    console.log('Sidebar selectionchange event stopped');
+  });
 }
 
 // 隐藏侧边栏
@@ -267,6 +313,45 @@ function updateSidebarContent(originalText, explanation) {
   console.log("Updating sidebar content");
   
   const content = sidebar.querySelector('.sidebar-content');
+  
+  /*
+   * --- 修复 1: 解析原始 JSON 对象无法正常渲染的问题 ---
+   * 如果 explanation 是原始的 JSON 数据（meaning 字段仍为对象），
+   * 则先通过 processJsonResponse 转换为包含 HTML 字符串的对象，
+   * 以保证后续插入到 innerHTML 时能够正确展示。
+   */
+  if (
+    explanation &&
+    typeof explanation === 'object' &&
+    explanation.meaning &&
+    typeof explanation.meaning !== 'string'
+  ) {
+    try {
+      console.log('[fix] Detected raw JSON, converting with processJsonResponse');
+      explanation = processJsonResponse(explanation);
+    } catch (err) {
+      console.error('[fix] processJsonResponse failed:', err);
+    }
+  }
+  
+  // 判断解释是字符串还是对象
+  let meaningHtml, vocabularyHtml, alternativesHtml;
+  if (typeof explanation === 'string') {
+    // 旧的字符串格式，将其视为 Meaning & Usage 内容
+    meaningHtml = explanation;
+    vocabularyHtml = generateVocabularyContent(originalText);
+    alternativesHtml = generateAlternativesContent(originalText);
+  } else if (explanation && typeof explanation === 'object') {
+    // 新的对象格式
+    meaningHtml = explanation.meaning || '';
+    vocabularyHtml = explanation.vocabulary || generateVocabularyContent(originalText);
+    alternativesHtml = explanation.alternatives || generateAlternativesContent(originalText);
+  } else {
+    // 回退处理
+    meaningHtml = '<p>Unable to parse explanation.</p>';
+    vocabularyHtml = generateVocabularyContent(originalText);
+    alternativesHtml = generateAlternativesContent(originalText);
+  }
   
   // 检查是否存在API状态日志容器
   const apiStatusContainer = document.getElementById('api-status-container');
@@ -290,13 +375,33 @@ function updateSidebarContent(originalText, explanation) {
   
   content.innerHTML = `
     <div class="original-text">
-      <h3><span></span>Original Text</h3>
+      <h3><span class="text-icon"></span>Original Text</h3>
       <p>${originalText}</p>
-      <button class="listen-btn"><span></span>Listen</button>
+      <button class="listen-btn"><span class="sound-icon"></span>Listen</button>
     </div>
     
-    <div class="explanation">
-      ${explanation}
+    <div class="tabs">
+      <div class="tab active" data-tab="meaning">Meaning & Usage</div>
+      <div class="tab" data-tab="vocabulary">Vocabulary</div>
+      <div class="tab" data-tab="alternatives">Alternatives</div>
+    </div>
+    
+    <div id="meaning-tab" class="tab-content active">
+      <div class="explanation">
+        ${meaningHtml}
+      </div>
+    </div>
+    
+    <div id="vocabulary-tab" class="tab-content">
+      <div class="vocabulary-content">
+        ${vocabularyHtml}
+      </div>
+    </div>
+    
+    <div id="alternatives-tab" class="tab-content">
+      <div class="alternatives-content">
+        ${alternativesHtml}
+      </div>
     </div>
     
     ${apiStatusHtml}
@@ -306,7 +411,7 @@ function updateSidebarContent(originalText, explanation) {
       <textarea id="english-explainer-input" placeholder="Enter or paste English text here..."></textarea>
       <div class="button-group">
         <button id="english-explainer-translate-btn">Explain Text</button>
-        <button id="english-explainer-reset-btn" class="reset-btn">Reset</button>
+        <!-- 移除了重置按钮 -->
       </div>
     </div>
   `;
@@ -322,11 +427,115 @@ function updateSidebarContent(originalText, explanation) {
   
   // 设置标签页切换功能和其他监听器
   setupTabsAndListeners();
+}
+
+// 生成词汇表内容
+function generateVocabularyContent(originalText) {
+  const words = extractKeyWords(originalText);
   
-  // 为新生成的标签页设置事件监听器（延迟执行确保DOM已更新）
-  setTimeout(() => {
-    setupTabEventListeners();
-  }, 200);
+  if (words.length > 0) {
+    return words.map(word => `
+      <div class="vocab-item">
+        <div class="vocab-header">
+          <div class="vocab-word">${word}</div>
+          <div class="part-of-speech">word</div>
+        </div>
+        <div class="vocab-definition">Key word from the text. Click "Pronounce" to hear pronunciation.</div>
+        <div class="vocab-example">"${word}" appears in the original text.</div>
+        <div class="vocab-actions">
+          <button class="vocab-btn listen-word" data-word="${word}">
+            <span class="sound-icon"></span>Pronounce
+          </button>
+          <button class="vocab-btn save-word" data-word="${word}">
+            <span class="save-icon"></span>Save
+          </button>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    return `
+      <div class="vocab-placeholder">
+        <p>Vocabulary analysis will be generated based on the explained text.</p>
+      </div>
+    `;
+  }
+}
+
+// 生成替代表达内容
+function generateAlternativesContent(originalText) {
+  const suggestions = generateBasicAlternatives(originalText);
+  
+  if (suggestions.length > 0) {
+    return suggestions.map(suggestion => `
+      <div class="alt-card">
+        <div class="alt-phrase">${suggestion.phrase}</div>
+        <div class="alt-meta">
+          <div class="alt-tag ${suggestion.formality.toLowerCase()}">${suggestion.formality}</div>
+          <div class="alt-tag">${suggestion.category}</div>
+        </div>
+        <div class="alt-example">"${suggestion.example}"</div>
+        <div class="alt-difference">${suggestion.description}</div>
+      </div>
+    `).join('');
+  } else {
+    return `
+      <div class="alt-placeholder">
+        <p>Alternative expressions and phrases will be suggested here.</p>
+      </div>
+    `;
+  }
+}
+
+// 从文本中提取关键词
+function extractKeyWords(text) {
+  // 简单的关键词提取逻辑
+  const words = text.toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 3)
+    .filter(word => !['this', 'that', 'with', 'from', 'they', 'them', 'were', 'been', 'have', 'will', 'would', 'could', 'should', 'shall', 'might', 'must', 'what', 'when', 'where', 'which', 'while', 'there', 'their', 'these', 'those'].includes(word));
+  
+  // 去重并限制数量
+  const uniqueWords = [...new Set(words)].slice(0, 5);
+  return uniqueWords;
+}
+
+// 生成基本的替代表达
+function generateBasicAlternatives(text) {
+  const alternatives = [];
+  
+  // 根据文本长度和内容生成一些基本建议
+  if (text.length < 50) {
+    alternatives.push({
+      phrase: "A more formal way to express this",
+      formality: "Formal",
+      category: "Style",
+      example: "Consider using more formal vocabulary and sentence structure.",
+      description: "This alternative focuses on elevating the formality level of the expression."
+    });
+  }
+  
+  if (text.includes("!")) {
+    alternatives.push({
+      phrase: "A calmer version without exclamation",
+      formality: "Neutral",
+      category: "Tone", 
+      example: text.replace(/!/g, "."),
+      description: "This version uses a more measured tone by removing exclamation marks."
+    });
+  }
+  
+  if (text.includes("free")) {
+    alternatives.push({
+      phrase: "A version emphasizing value instead of cost",
+      formality: "Neutral",
+      category: "Marketing",
+      example: text.replace(/free/gi, "complimentary"),
+      description: "Using 'complimentary' instead of 'free' can sound more professional and valuable."
+    });
+  }
+  
+  return alternatives;
 }
 
 // 设置标签页和监听器
@@ -347,13 +556,37 @@ function setupTabsAndListeners() {
     const listenWordBtns = document.querySelectorAll('.listen-word');
     if (listenWordBtns && listenWordBtns.length > 0) {
       listenWordBtns.forEach(btn => {
+        // 避免重复绑定事件
+        if (btn.hasAttribute('data-listener-added')) return;
+        btn.setAttribute('data-listener-added', 'true');
+        
         btn.addEventListener('click', function() {
           const word = this.getAttribute('data-word');
           if (word) {
             const utterance = new SpeechSynthesisUtterance(word);
             utterance.lang = 'en-US';
+            utterance.rate = 0.8; // 稍微慢一点，便于学习
             window.speechSynthesis.speak(utterance);
           }
+        });
+      });
+    }
+    
+    // 设置保存按钮
+    const saveWordBtns = document.querySelectorAll('.save-word');
+    if (saveWordBtns && saveWordBtns.length > 0) {
+      saveWordBtns.forEach(btn => {
+        if (btn.hasAttribute('data-save-listener-added')) return;
+        btn.setAttribute('data-save-listener-added', 'true');
+        
+        btn.addEventListener('click', function() {
+          const word = this.getAttribute('data-word');
+          // 占位符功能：将来可以实现保存到单词本
+          console.log('保存单词:', word);
+          this.style.color = '#4CAF50';
+          setTimeout(() => {
+            this.style.color = '#4285f4';
+          }, 1000);
         });
       });
     }
@@ -363,64 +596,47 @@ function setupTabsAndListeners() {
   }, 100);
 }
 
-// 通用的标签页事件监听器设置函数
+// 简化的标签页事件监听器设置函数
 function setupTabEventListeners() {
-  // 找到所有标签页容器
-  const allTabsContainers = document.querySelectorAll('.tabs');
-  
-  allTabsContainers.forEach(tabsContainer => {
-    const tabs = tabsContainer.querySelectorAll('.tab');
-    const containerId = tabsContainer.id;
-    
-    // 为每个标签页添加事件监听器
-    tabs.forEach(tab => {
-      // 检查是否已经有事件监听器
-      if (tab.hasAttribute('data-tab-listener')) return;
-      
-      tab.setAttribute('data-tab-listener', 'true');
-      tab.addEventListener('click', function(e) {
-        e.preventDefault();
-        const tabId = this.getAttribute('data-tab');
-        console.log("点击标签:", tabId, "容器ID:", containerId);
-        
-        // 在当前容器范围内移除所有活动状态
-        tabs.forEach(t => t.classList.remove('active'));
-        this.classList.add('active');
-        
-        // 查找对应的内容区域
-        let contentTab;
-        
-        // 如果有容器ID，先尝试查找带容器ID前缀的内容
-        if (containerId) {
-          contentTab = document.getElementById(`${containerId}-${tabId}-tab`);
-        }
-        
-        // 如果没找到带容器ID的内容，尝试查找普通ID的内容
-        if (!contentTab) {
-          contentTab = document.getElementById(`${tabId}-tab`);
-        }
-        
-        if (!contentTab) {
-          console.error(`未找到内容标签: ${tabId}-tab`);
-          return;
-        }
-        
-        // 移除相关内容的活动状态
-        if (containerId) {
-          // 对于带容器ID的标签页，只移除同一容器下的内容
-          const relatedContents = document.querySelectorAll(`[id^="${containerId}-"][id$="-tab"]`);
-          relatedContents.forEach(c => c.classList.remove('active'));
-        } else {
-          // 对于普通标签页，移除所有没有容器ID前缀的内容
-          const simpleContents = document.querySelectorAll('[id$="-tab"]:not([id^="tabs-"])');
-          simpleContents.forEach(c => c.classList.remove('active'));
-        }
-        
-        // 激活选中的内容
-        contentTab.classList.add('active');
-      });
-    });
-  });
+  /*
+   * --- 修复 2: 使用事件委托实现更稳健的标签页切换 ---
+   * 1. 只在 .tabs 容器上绑定一次点击事件，避免重复绑定和内存泄漏。
+   * 2. 通过 closest('.tab') 获取被点击的 tab 元素，实现对动态内容的支持。
+   */
+  const tabsContainer = sidebar ? sidebar.querySelector('.tabs') : null;
+  if (!tabsContainer) {
+    console.warn('[fix] tabs container not found, skip binding');
+    return;
+  }
+
+  // 如已绑定过，则先移除旧的处理函数，避免重复绑定
+  if (tabsContainer.__tabClickHandler) {
+    tabsContainer.removeEventListener('click', tabsContainer.__tabClickHandler);
+  }
+
+  const handler = (event) => {
+    const tab = event.target.closest('.tab');
+    if (!tab || !tabsContainer.contains(tab)) return;
+
+    const clickedTabId = tab.getAttribute('data-tab');
+    if (!clickedTabId) return;
+
+    // 激活状态切换
+    const allTabs = tabsContainer.querySelectorAll('.tab');
+    const allContents = sidebar.querySelectorAll('.tab-content');
+    allTabs.forEach(t => t.classList.remove('active'));
+    allContents.forEach(c => c.classList.remove('active'));
+
+    tab.classList.add('active');
+    const contentTab = sidebar.querySelector(`#${clickedTabId}-tab`);
+    if (contentTab) {
+      contentTab.classList.add('active');
+    }
+  };
+
+  tabsContainer.addEventListener('click', handler);
+  // 记录 handler，便于后续解绑
+  tabsContainer.__tabClickHandler = handler;
 }
 
 // 设置API状态日志的事件监听
@@ -476,7 +692,7 @@ function showLoading() {
       <textarea id="english-explainer-input" placeholder="Enter or paste English text here..."></textarea>
       <div class="button-group">
         <button id="english-explainer-translate-btn">Explain Text</button>
-        <button id="english-explainer-reset-btn" class="reset-btn">Reset</button>
+        <!-- 移除了重置按钮 -->
       </div>
     </div>
   `;
@@ -522,7 +738,7 @@ function showError(message) {
       <textarea id="english-explainer-input" placeholder="在此输入或粘贴英文文本..."></textarea>
       <div class="button-group">
         <button id="english-explainer-translate-btn">解释文本</button>
-        <button id="english-explainer-reset-btn" class="reset-btn">重置状态</button>
+        <!-- 移除了重置按钮 -->
       </div>
     </div>
   `;
@@ -575,92 +791,7 @@ function generateLocalExplanation(text) {
   });
 }
 
-// 将API返回的文本格式化为HTML
-function formatExplanationAsHtml(text) {
-  // 添加日志
-  console.log("开始格式化API返回的文本:", text ? text.substring(0, 100) + "..." : "null");
-  addApiStatusLog("开始格式化API返回的文本");
-  
-  // 安全检查
-  if (!text) {
-    console.error("API返回的文本为空");
-    addApiStatusLog("API返回的文本为空", 'error');
-    return `
-      <div class="explanation-content">
-        <p>API returned empty content. Please try again.</p>
-      </div>
-    `;
-  }
-  
-  try {
-    // 提取各个部分 - 使用简化的解析
-    const meaningMatch = text.match(/##\s*\**Meaning\s*&?\s*Usage\**[^\n]*\n([\s\S]*?)(?=##\s*\**Key\s*Vocabulary|##\s*\**Alternative|$)/i);
-    const vocabMatch = text.match(/##\s*\**Key\s*Vocabulary\**[^\n]*\n([\s\S]*?)(?=##\s*\**Alternative|$)/i);
-    const altMatch = text.match(/##\s*\**Alternative\s*Expressions\**[^\n]*\n([\s\S]*?)(?=$)/i);
-    
-    // 如果无法解析Markdown格式，返回原始文本
-    if (!meaningMatch && !vocabMatch && !altMatch) {
-      return `
-        <div class="explanation-content">
-          <div class="section">
-            <h4>API Response</h4>
-            <div style="white-space: pre-wrap; font-family: monospace; background: #f5f5f5; padding: 12px; border-radius: 4px;">
-              ${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
-            </div>
-          </div>
-        </div>
-      `;
-    }
-    
-    // 构建简化的HTML结构
-    let html = '<div class="explanation-content">';
-    
-    if (meaningMatch) {
-      html += `
-        <div class="section">
-          <h4>Meaning & Usage</h4>
-          <div style="white-space: pre-wrap; line-height: 1.6;">
-            ${meaningMatch[1].trim()}
-          </div>
-        </div>
-      `;
-    }
-    
-    if (vocabMatch) {
-      html += `
-        <div class="section">
-          <h4>Key Vocabulary</h4>
-          <div style="white-space: pre-wrap; line-height: 1.6;">
-            ${vocabMatch[1].trim()}
-          </div>
-        </div>
-      `;
-    }
-    
-    if (altMatch) {
-      html += `
-        <div class="section">
-          <h4>Alternative Expressions</h4>
-          <div style="white-space: pre-wrap; line-height: 1.6;">
-            ${altMatch[1].trim()}
-          </div>
-        </div>
-      `;
-    }
-    
-    html += '</div>';
-    return html;
-    
-  } catch (error) {
-    console.error("格式化文本时出错:", error);
-    addApiStatusLog(`格式化文本时出错: ${error.message}`, 'error');
-    return `
-      <div class="explanation-content error">
-        <p>Error formatting content: ${error.message}</p>
-      </div>
-    `;
-  }
-}
+
 
 // 从API获取解释
 async function getExplanationFromAPI(text, apiSettings) {
@@ -908,8 +1039,8 @@ IMPORTANT:
       } catch (jsonError) {
         console.error("无法将免费API返回内容解析为JSON:", jsonError);
         addApiStatusLog(`无法将免费API返回内容解析为JSON: ${jsonError.message}`, 'error');
-        // 如果解析失败，使用旧的格式化方法
-        return formatExplanationAsHtml(explanation);
+        // 如果解析失败，抛出错误让调用方处理
+        throw new Error(`免费API返回内容不是有效的JSON格式: ${jsonError.message}`);
       }
     } catch (error) {
       console.error(`调用免费API (${apiUrl}) 时出错:`, error);
@@ -1164,9 +1295,9 @@ IMPORTANT:
         return processJsonResponse(jsonData);
       } catch (jsonError) {
         console.error("无法将免费API返回内容解析为JSON:", jsonError);
-        addApiStatusLog(`无法将免费API返回内容解析为JSON: ${jsonError.message}`, 'error');
-        // 如果解析失败，使用旧的格式化方法
-        return formatExplanationAsHtml(explanation);
+        addApiStatusLog(`无法将OpenAI API返回内容解析为JSON: ${jsonError.message}`, 'error');
+        // 如果解析失败，抛出错误让调用方处理
+        throw new Error(`OpenAI API返回内容不是有效的JSON格式: ${jsonError.message}`);
       }
     } catch (error) {
       console.error(`调用OpenAI API (${apiUrl}) 时出错:`, error);
@@ -1220,57 +1351,65 @@ async function getDeepSeekExplanation(text, apiSettings) {
   
   // 构建提示词
   const prompt = `
-Please analyze the following English text and return your analysis in a strict JSON format:
+Please analyze this English text using simple, easy-to-understand English and return your analysis in a strict JSON format:
 
 "${text}"
 
-Your response MUST be a valid JSON object with the following structure:
+Your response MUST be a valid JSON object with the following 
+structure and Use simple words and short sentences that are easy to read：
 
 {
   "meaning": {
-    "definition": "Clear explanation of the core meaning",
+    "definition": "Explain what this text means in simple English",
     "usageContext": [
-      "List of contexts where this text would be used",
-      "Target audience and situations",
-      "Communication style and register"
+      "When would people use this text?",
+      "Who might say or write this?",
+      "What situation is this for?"
     ],
     "grammarStructure": [
-      "Key grammatical features",
-      "Sentence structure analysis",
-      "Tense and mood usage"
+      "What grammar patterns are used here?",
+      "How is this sentence built?",
+      "What verb tenses are used?"
     ],
     "usageNotes": [
-      "Important usage notes",
+      "Important things to remember",
       "Common mistakes to avoid",
-      "Style and register considerations"
+      "Tips for using this correctly"
     ]
   },
   "vocabulary": [
     {
       "word": "Key word or phrase",
       "type": "Part of speech",
-      "definition": "Clear definition",
-      "usage": "Example usage",
-      "synonyms": "Related words or phrases"
+      "definition": "simple explanation of what this word means",
+      "usage": "example of how to use this word",
+      "synonyms": "other words that mean the same thing"
     }
   ],
   "alternatives": [
     {
-      "phrase": "Alternative expression",
-      "description": "How this alternative differs",
+      "phrase": "different way to say the same thing",
+      "description": "how this is different from the original",
       "formality": "Formal/Informal/Neutral",
-      "example": "Example usage"
+      "example": "example sentence using this alternative"
     }
   ]
 }
 
-IMPORTANT:
-1. Ensure the response is STRICTLY in this JSON format
-2. Do not include any text outside the JSON structure
-3. All string values should be properly escaped
-4. Arrays should contain at least 2-3 items each
-5. The vocabulary section should analyze 3-5 key terms
-6. The alternatives section should provide 3-5 different expressions
+IMPORTANT RULES:
+1. Use simple English words (avoid complex vocabulary)
+2. Keep sentences short and clear
+3. Explain things like you're talking to a language learner
+4. Use everyday examples that people can understand
+5. Avoid technical grammar terms when possible
+6. Make explanations practical and useful
+7. Return only the JSON - no extra text
+8. Ensure the response is STRICTLY in this JSON format
+9. Do not include any text outside the JSON structure
+10. All string values should be properly escaped
+11. Arrays should contain at least 2-3 items each
+12. The vocabulary section should analyze 3-5 key terms
+13. The alternatives section should provide 3-5 different expressions
 `;
 
   // 构建请求体
@@ -1457,9 +1596,9 @@ IMPORTANT:
         return processJsonResponse(jsonData);
       } catch (jsonError) {
         console.error("无法将API返回内容解析为JSON:", jsonError);
-        addApiStatusLog(`无法将API返回内容解析为JSON: ${jsonError.message}`, 'error');
-        // 如果解析失败，使用旧的格式化方法
-        return formatExplanationAsHtml(explanation);
+        addApiStatusLog(`无法将DeepSeek API返回内容解析为JSON: ${jsonError.message}`, 'error');
+        // 如果解析失败，抛出错误让调用方处理
+        throw new Error(`DeepSeek API返回内容不是有效的JSON格式: ${jsonError.message}`);
       }
     } catch (error) {
       console.error(`调用DeepSeek API (${apiUrl}) 时出错:`, error);
@@ -1504,31 +1643,26 @@ function processJsonResponse(jsonData) {
       throw new Error('Invalid JSON response structure');
     }
 
-    let html = '';
-
-    // Meaning & Usage 部分
-    html += `
+    // 1) 生成 Meaning & Usage HTML
+    const meaningHtml = `
       <div class="section meaning-section">
         <h4>Meaning & Usage</h4>
         <div class="definition-box">
           <h5>Definition</h5>
           <p>${jsonData.meaning.definition}</p>
         </div>
-        
         <div class="subsection">
           <h5>Usage Context</h5>
           <ul class="bullet-list">
             ${jsonData.meaning.usageContext.map(context => `<li>${context}</li>`).join('')}
           </ul>
         </div>
-        
         <div class="subsection">
           <h5>Grammar Structure</h5>
           <ul class="bullet-list">
             ${jsonData.meaning.grammarStructure.map(grammar => `<li>${grammar}</li>`).join('')}
           </ul>
         </div>
-        
         <div class="subsection">
           <h5>Usage Notes</h5>
           <ul class="bullet-list">
@@ -1538,8 +1672,8 @@ function processJsonResponse(jsonData) {
       </div>
     `;
 
-    // Vocabulary 部分
-    html += `
+    // 2) 生成 Vocabulary HTML
+    const vocabularyHtml = `
       <div class="section vocabulary-section">
         <h4>Key Vocabulary</h4>
         ${jsonData.vocabulary.map(vocab => `
@@ -1556,8 +1690,8 @@ function processJsonResponse(jsonData) {
       </div>
     `;
 
-    // Alternatives 部分
-    html += `
+    // 3) 生成 Alternatives HTML
+    const alternativesHtml = `
       <div class="section alternatives-section">
         <h4>Alternative Expressions</h4>
         ${jsonData.alternatives.map(alt => `
@@ -1573,7 +1707,12 @@ function processJsonResponse(jsonData) {
       </div>
     `;
 
-    return html;
+    // 返回一个对象，供调用方按需渲染到不同标签页
+    return {
+      meaning: meaningHtml,
+      vocabulary: vocabularyHtml,
+      alternatives: alternativesHtml
+    };
   } catch (error) {
     console.error('Error processing JSON response:', error);
     throw new Error(`Failed to process JSON response: ${error.message}`);
@@ -1582,242 +1721,349 @@ function processJsonResponse(jsonData) {
 
 // 处理解释请求
 async function explainText(text) {
-  if (isProcessing) {
-    // 如果已经在处理中，显示一个临时提示而不是卡住
-    const content = sidebar.querySelector('.sidebar-content');
-    content.innerHTML += '<div class="info">正在处理前一个请求，请稍候...</div>';
+  if (!text) {
+    console.error("没有提供文本");
     return;
   }
-  
-  isProcessing = true;
-  let translationTimeout = null;
-  let requestStartTime = Date.now();
+
+  console.log("解释文本:", text);
+  showLoading();
+
+  let explanation;
   
   try {
-    console.log("开始处理解释请求:", text);
-    console.log("请求开始时间:", new Date(requestStartTime).toISOString());
-    addApiStatusLog(`开始处理解释请求，长度: ${text.length} 字符`);
-    showLoading();
-    
-    // 设置超时处理，防止无限等待
-    const timeoutPromise = new Promise((_, reject) => {
-      translationTimeout = setTimeout(() => {
-        const elapsedTime = (Date.now() - requestStartTime) / 1000;
-        console.log(`全局超时触发，${elapsedTime.toFixed(1)}秒已过`);
-        addApiStatusLog(`全局超时触发，${elapsedTime.toFixed(1)}秒已过`, 'error');
-        reject(new Error(`解释生成超时(${elapsedTime.toFixed(1)}秒)，请重试`));
-      }, 60000); // 60秒超时
-    });
-    
-    // 获取API设置
-    const apiSettingsPromise = new Promise((resolve, reject) => {
-      try {
-        console.log("正在获取API设置...");
-        addApiStatusLog("正在获取API设置...");
-      chrome.runtime.sendMessage({ action: 'getApiSettings' }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error("获取API设置时出错:", chrome.runtime.lastError);
-            addApiStatusLog(`获取API设置时出错: ${chrome.runtime.lastError.message || '未知错误'}`, 'error');
-            reject(new Error(`获取API设置时出错: ${chrome.runtime.lastError.message || '未知错误'}`));
-            return;
+    // 获取API设置，添加重试机制
+    const getApiSettingsWithRetry = async (maxRetries = 3, retryDelay = 1000) => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`尝试获取API设置 (第${attempt}次)`);
+          addApiStatusLog(`尝试获取API设置 (第${attempt}次)`);
+          
+          const settings = await new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+              reject(new Error('获取API设置超时'));
+            }, 5000); // 5秒超时
+            
+            try {
+              chrome.runtime.sendMessage({ action: 'getApiSettings' }, (response) => {
+                clearTimeout(timeoutId);
+                
+                if (chrome.runtime.lastError) {
+                  reject(new Error(chrome.runtime.lastError.message));
+                  return;
+                }
+                
+                resolve(response || {});
+              });
+            } catch (error) {
+              clearTimeout(timeoutId);
+              reject(error);
+            }
+          });
+          
+          console.log("成功获取API设置:", settings);
+          addApiStatusLog(`成功获取API设置`);
+          return settings;
+          
+        } catch (error) {
+          console.error(`获取API设置失败 (第${attempt}次):`, error);
+          addApiStatusLog(`获取API设置失败 (第${attempt}次): ${error.message}`, 'error');
+          
+          // 检查是否是扩展上下文失效错误
+          if (error.message.includes('Extension context invalidated') || 
+              error.message.includes('Extension context was invalidated')) {
+            addApiStatusLog('扩展上下文已失效，尝试重新初始化...', 'warning');
+            // 重新初始化扩展
+            initializeExtension();
           }
           
-          console.log("收到API设置:", response);
-          addApiStatusLog(`收到API设置: ${JSON.stringify(response || {}).substring(0, 100)}...`);
-        resolve(response || {});
-      });
-      } catch (error) {
-        console.error("发送消息时出错:", error);
-        addApiStatusLog(`发送消息时出错: ${error.message}`, 'error');
-        reject(error);
+          if (attempt < maxRetries) {
+            addApiStatusLog(`等待${retryDelay/1000}秒后重试...`, 'info');
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            // 每次重试增加延迟
+            retryDelay *= 1.5;
+          } else {
+            throw new Error(`获取API设置失败: ${error.message}`);
+          }
+        }
       }
-    });
-    
-    // 添加超时竞争
-    let apiSettings;
-    try {
-      apiSettings = await Promise.race([
-      apiSettingsPromise,
-      timeoutPromise
-    ]);
-    
-      console.log("成功获取API设置，耗时:", (Date.now() - requestStartTime) / 1000, "秒");
-      addApiStatusLog(`成功获取API设置，耗时: ${((Date.now() - requestStartTime) / 1000).toFixed(1)}秒`);
-    } catch (error) {
-      console.error("获取API设置时超时或出错:", error);
-      addApiStatusLog(`获取API设置时超时或出错: ${error.message}`, 'error');
-      
-      // 在这里处理错误，而不是直接抛出
-      const errorMessage = error.message || "未知错误";
-      const userFriendlyError = `
-        <div class="error">
-          <h4>获取API设置时出错</h4>
-          <p>${errorMessage}</p>
-          <p>使用本地解释功能代替。</p>
-        </div>
-      `;
-      
-      // 使用本地解释
-      const explanation = generateLocalExplanation(text);
-      // 在解释前添加错误提示
-      updateSidebarContent(text, userFriendlyError + explanation);
-      
-      // 清除超时定时器
-      if (translationTimeout) {
-        clearTimeout(translationTimeout);
-        translationTimeout = null;
-      }
-      
-      isProcessing = false;
-      return; // 提前返回，不继续执行
+    };
+
+    // 尝试获取API设置
+    const apiSettings = await getApiSettingsWithRetry();
+
+    if (isProcessing) {
+      // 如果已经在处理中，显示一个临时提示而不是卡住
+      const content = sidebar.querySelector('.sidebar-content');
+      content.innerHTML += '<div class="info">正在处理前一个请求，请稍候...</div>';
+      return;
     }
     
-    console.log("API设置详情:", apiSettings);
+    isProcessing = true;
+    let translationTimeout = null;
+    let requestStartTime = Date.now();
     
-    let explanation;
-    
-    // 检查是否使用API
-    if (apiSettings.useApi && 
-        (apiSettings.useFreeApi || 
-         (apiSettings.apiType === 'openai' && apiSettings.apiKey) || 
-         (apiSettings.apiType === 'deepseek' && apiSettings.deepseekApiKey))) {
+    try {
+      console.log("开始处理解释请求:", text);
+      console.log("请求开始时间:", new Date(requestStartTime).toISOString());
+      addApiStatusLog(`开始处理解释请求，长度: ${text.length} 字符`);
+      showLoading();
       
-      addApiStatusLog(`API类型: ${apiSettings.apiType || '未指定'}`);
+      // 设置超时处理，防止无限等待
+      const timeoutPromise = new Promise((_, reject) => {
+        translationTimeout = setTimeout(() => {
+          const elapsedTime = (Date.now() - requestStartTime) / 1000;
+          console.log(`全局超时触发，${elapsedTime.toFixed(1)}秒已过`);
+          addApiStatusLog(`全局超时触发，${elapsedTime.toFixed(1)}秒已过`, 'error');
+          reject(new Error(`解释生成超时(${elapsedTime.toFixed(1)}秒)，请重试`));
+        }, 60000); // 60秒超时
+      });
       
+      // 获取API设置
+      const apiSettingsPromise = new Promise((resolve, reject) => {
+        try {
+          console.log("正在获取API设置...");
+          addApiStatusLog("正在获取API设置...");
+        chrome.runtime.sendMessage({ action: 'getApiSettings' }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error("获取API设置时出错:", chrome.runtime.lastError);
+              addApiStatusLog(`获取API设置时出错: ${chrome.runtime.lastError.message || '未知错误'}`, 'error');
+              reject(new Error(`获取API设置时出错: ${chrome.runtime.lastError.message || '未知错误'}`));
+              return;
+            }
+            
+            console.log("收到API设置:", response);
+            addApiStatusLog(`收到API设置: ${JSON.stringify(response || {}).substring(0, 100)}...`);
+          resolve(response || {});
+        });
+        } catch (error) {
+          console.error("发送消息时出错:", error);
+          addApiStatusLog(`发送消息时出错: ${error.message}`, 'error');
+          reject(error);
+        }
+      });
+      
+      // 添加超时竞争
+      let apiSettings;
       try {
-        const apiStartTime = Date.now();
-        console.log(`开始调用API (${apiSettings.apiType || '未指定'})...`);
-        addApiStatusLog(`开始调用API (${apiSettings.apiType || '未指定'})...`);
+        apiSettings = await Promise.race([
+        apiSettingsPromise,
+        timeoutPromise
+      ]);
+      
+        console.log("成功获取API设置，耗时:", (Date.now() - requestStartTime) / 1000, "秒");
+        addApiStatusLog(`成功获取API设置，耗时: ${((Date.now() - requestStartTime) / 1000).toFixed(1)}秒`);
+      } catch (error) {
+        console.error("获取API设置时超时或出错:", error);
+        addApiStatusLog(`获取API设置时超时或出错: ${error.message}`, 'error');
         
-        // 不再对API调用本身设置超时竞争，让fetch自己处理超时
-        // 这样可以避免在API实际有响应但处理较慢时提前触发超时
-        explanation = await getExplanationFromAPI(text, apiSettings);
+        // 在这里处理错误，而不是直接抛出
+        const errorMessage = error.message || "未知错误";
+        const userFriendlyError = `
+          <div class="error">
+            <h4>获取API设置时出错</h4>
+            <p>${errorMessage}</p>
+            <p>使用本地解释功能代替。</p>
+          </div>
+        `;
         
-        const apiElapsedTime = (Date.now() - apiStartTime) / 1000;
-        console.log(`API调用完成，耗时: ${apiElapsedTime.toFixed(1)}秒`);
-        addApiStatusLog(`API调用完成，耗时: ${apiElapsedTime.toFixed(1)}秒`, 'success');
+        // 使用本地解释
+        const explanation = generateLocalExplanation(text);
+        // 在解释内容的meaning部分前添加错误提示
+        explanation.meaning = userFriendlyError + (explanation.meaning || '');
+        updateSidebarContent(text, explanation);
         
-        // 清除全局超时定时器，因为请求已成功完成
+        // 清除超时定时器
         if (translationTimeout) {
           clearTimeout(translationTimeout);
           translationTimeout = null;
-          console.log("已清除全局超时定时器");
-          addApiStatusLog("已清除全局超时定时器");
-        }
-      } catch (apiError) {
-        console.error("API调用错误:", apiError);
-        addApiStatusLog(`API错误: ${apiError.message}`, 'error');
-        
-        // 构建用户友好的错误信息
-        let errorMessage = apiError.message || "未知错误";
-        let userFriendlyError = "";
-        
-        // 网络错误特殊处理
-        if (apiError.name === 'TypeError' && errorMessage.includes('Failed to fetch')) {
-          userFriendlyError = `
-            <div class="error">
-              <h4>网络错误</h4>
-              <p>无法连接到API服务器，请检查您的网络连接。</p>
-              <p>技术详情: ${errorMessage}</p>
-              <p>解决方案:</p>
-              <ul>
-                <li>检查您的网络连接是否正常</li>
-                <li>确认API服务器地址是否正确</li>
-                <li>检查是否有防火墙或代理限制</li>
-                <li>尝试使用本地解释功能</li>
-              </ul>
-            </div>
-          `;
-        }
-        // 超时错误特殊处理
-        else if (errorMessage.includes("timeout") || errorMessage.includes("超时") || apiError.name === 'AbortError') {
-          userFriendlyError = `
-            <div class="error">
-              <h4>请求超时</h4>
-              <p>解释生成请求超时，可能是网络问题或服务器繁忙。</p>
-              <p>技术详情: ${errorMessage}</p>
-              <p>解决方案:</p>
-              <ul>
-                <li>请检查您的网络连接</li>
-                <li>稍后再试</li>
-                <li>尝试使用本地解释功能</li>
-              </ul>
-            </div>
-          `;
-        } 
-        // 账户余额不足
-        else if (errorMessage.includes("Insufficient Balance") || errorMessage.includes("账户余额不足")) {
-          userFriendlyError = `
-            <div class="error">
-              <h4>API调用失败: 账户余额不足</h4>
-              <p>您的账户余额不足，无法完成此次请求。</p>
-              <p>技术详情: ${errorMessage}</p>
-              <p>解决方案:</p>
-              <ul>
-                <li>请登录账户充值</li>
-                <li>或切换到其他API提供商</li>
-                <li>或尝试勾选"使用免费API"选项</li>
-                <li>或暂时使用本地解释功能</li>
-              </ul>
-            </div>
-          `;
-        } 
-        // 认证错误
-        else if (errorMessage.includes("认证失败") || errorMessage.includes("Authentication") || 
-                  errorMessage.includes("invalid") || errorMessage.includes("密钥")) {
-          userFriendlyError = `
-            <div class="error">
-              <h4>API调用失败: 认证错误</h4>
-              <p>您提供的API密钥可能无效或已过期。</p>
-              <p>技术详情: ${errorMessage}</p>
-              <p>请检查API密钥是否正确输入，或尝试重新生成一个新的API密钥。</p>
-              <p>您也可以尝试勾选"使用免费API"选项。</p>
-            </div>
-          `;
-        } 
-        // 免费API错误
-        else if (errorMessage.includes("免费API")) {
-          userFriendlyError = `
-            <div class="error">
-              <h4>免费API调用失败</h4>
-              <p>${errorMessage}</p>
-              <p>免费API可能暂时不可用或超出使用限制。请稍后再试或使用您自己的API密钥。</p>
-            </div>
-          `;
-        } 
-        // 其他错误
-        else {
-          userFriendlyError = `
-            <div class="error">
-              <h4>API调用失败</h4>
-              <p>${errorMessage}</p>
-              <p>使用本地解释功能代替。</p>
-              <details>
-                <summary>技术详情</summary>
-                <p>错误类型: ${apiError.name}</p>
-                <p>错误消息: ${apiError.message}</p>
-                <p>错误栈: ${apiError.stack ? apiError.stack.split('\n').slice(0, 3).join('<br>') : '无'}</p>
-              </details>
-            </div>
-          `;
         }
         
-        // 如果API调用失败，回退到本地解释
-        explanation = generateLocalExplanation(text);
-        // 在解释前添加错误提示
-        explanation = userFriendlyError + explanation;
+        isProcessing = false;
+        return; // 提前返回，不继续执行
       }
-    } else {
-      // 使用本地解释
-      addApiStatusLog("使用本地解释功能");
-      explanation = generateLocalExplanation(text);
+      
+      console.log("API设置详情:", apiSettings);
+      
+      let explanation;
+      
+      // 检查是否使用API
+      if (apiSettings.useApi && 
+          (apiSettings.useFreeApi || 
+           (apiSettings.apiType === 'openai' && apiSettings.apiKey) || 
+           (apiSettings.apiType === 'deepseek' && apiSettings.deepseekApiKey))) {
+        
+        addApiStatusLog(`API类型: ${apiSettings.apiType || '未指定'}`);
+        
+        try {
+          const apiStartTime = Date.now();
+          console.log(`开始调用API (${apiSettings.apiType || '未指定'})...`);
+          addApiStatusLog(`开始调用API (${apiSettings.apiType || '未指定'})...`);
+          
+          // 不再对API调用本身设置超时竞争，让fetch自己处理超时
+          // 这样可以避免在API实际有响应但处理较慢时提前触发超时
+          explanation = await getExplanationFromAPI(text, apiSettings);
+          
+          const apiElapsedTime = (Date.now() - apiStartTime) / 1000;
+          console.log(`API调用完成，耗时: ${apiElapsedTime.toFixed(1)}秒`);
+          addApiStatusLog(`API调用完成，耗时: ${apiElapsedTime.toFixed(1)}秒`, 'success');
+          
+          // 清除全局超时定时器，因为请求已成功完成
+          if (translationTimeout) {
+            clearTimeout(translationTimeout);
+            translationTimeout = null;
+            console.log("已清除全局超时定时器");
+            addApiStatusLog("已清除全局超时定时器");
+          }
+        } catch (apiError) {
+          console.error("API调用错误:", apiError);
+          addApiStatusLog(`API错误: ${apiError.message}`, 'error');
+          
+          // 构建用户友好的错误信息
+          let errorMessage = apiError.message || "未知错误";
+          let userFriendlyError = "";
+          
+          // 网络错误特殊处理
+          if (apiError.name === 'TypeError' && errorMessage.includes('Failed to fetch')) {
+            userFriendlyError = `
+              <div class="error">
+                <h4>网络错误</h4>
+                <p>无法连接到API服务器，请检查您的网络连接。</p>
+                <p>技术详情: ${errorMessage}</p>
+                <p>解决方案:</p>
+                <ul>
+                  <li>检查您的网络连接是否正常</li>
+                  <li>确认API服务器地址是否正确</li>
+                  <li>检查是否有防火墙或代理限制</li>
+                  <li>尝试使用本地解释功能</li>
+                </ul>
+              </div>
+            `;
+          }
+          // 超时错误特殊处理
+          else if (errorMessage.includes("timeout") || errorMessage.includes("超时") || apiError.name === 'AbortError') {
+            userFriendlyError = `
+              <div class="error">
+                <h4>请求超时</h4>
+                <p>解释生成请求超时，可能是网络问题或服务器繁忙。</p>
+                <p>技术详情: ${errorMessage}</p>
+                <p>解决方案:</p>
+                <ul>
+                  <li>请检查您的网络连接</li>
+                  <li>稍后再试</li>
+                  <li>尝试使用本地解释功能</li>
+                </ul>
+              </div>
+            `;
+          } 
+          // 账户余额不足
+          else if (errorMessage.includes("Insufficient Balance") || errorMessage.includes("账户余额不足")) {
+            userFriendlyError = `
+              <div class="error">
+                <h4>API调用失败: 账户余额不足</h4>
+                <p>您的账户余额不足，无法完成此次请求。</p>
+                <p>技术详情: ${errorMessage}</p>
+                <p>解决方案:</p>
+                <ul>
+                  <li>请登录账户充值</li>
+                  <li>或切换到其他API提供商</li>
+                  <li>或尝试勾选"使用免费API"选项</li>
+                  <li>或暂时使用本地解释功能</li>
+                </ul>
+              </div>
+            `;
+          } 
+          // 认证错误
+          else if (errorMessage.includes("认证失败") || errorMessage.includes("Authentication") || 
+                    errorMessage.includes("invalid") || errorMessage.includes("密钥")) {
+            userFriendlyError = `
+              <div class="error">
+                <h4>API调用失败: 认证错误</h4>
+                <p>您提供的API密钥可能无效或已过期。</p>
+                <p>技术详情: ${errorMessage}</p>
+                <p>请检查API密钥是否正确输入，或尝试重新生成一个新的API密钥。</p>
+                <p>您也可以尝试勾选"使用免费API"选项。</p>
+              </div>
+            `;
+          } 
+          // 免费API错误
+          else if (errorMessage.includes("免费API")) {
+            userFriendlyError = `
+              <div class="error">
+                <h4>免费API调用失败</h4>
+                <p>${errorMessage}</p>
+                <p>免费API可能暂时不可用或超出使用限制。请稍后再试或使用您自己的API密钥。</p>
+              </div>
+            `;
+          } 
+          // 其他错误
+          else {
+            userFriendlyError = `
+              <div class="error">
+                <h4>API调用失败</h4>
+                <p>${errorMessage}</p>
+                <p>使用本地解释功能代替。</p>
+                <details>
+                  <summary>技术详情</summary>
+                  <p>错误类型: ${apiError.name}</p>
+                  <p>错误消息: ${apiError.message}</p>
+                  <p>错误栈: ${apiError.stack ? apiError.stack.split('\n').slice(0, 3).join('<br>') : '无'}</p>
+                </details>
+              </div>
+            `;
+          }
+          
+          // 如果API调用失败，回退到本地解释
+          explanation = generateLocalExplanation(text);
+          // 在解释内容的meaning部分前添加错误提示
+          explanation.meaning = userFriendlyError + (explanation.meaning || '');
+        }
+      } else {
+        // 使用本地解释
+        addApiStatusLog("使用本地解释功能");
+        explanation = generateLocalExplanation(text);
+      }
+      
+      const totalElapsedTime = (Date.now() - requestStartTime) / 1000;
+      console.log(`请求处理完成，总耗时: ${totalElapsedTime.toFixed(1)}秒`);
+      addApiStatusLog(`请求处理完成，总耗时: ${totalElapsedTime.toFixed(1)}秒`, 'success');
+      
+      updateSidebarContent(text, explanation);
+    } catch (error) {
+      console.error("解释文本时出错:", error);
+      addApiStatusLog(`解释文本时出错: ${error.message}`, 'error');
+      
+      // 清除侧边栏加载状态，显示错误信息
+      try {
+        const errorDetails = `
+          <div class="error">
+            <h4>无法生成解释</h4>
+            <p>${error.message || '未知错误'}</p>
+            <details>
+              <summary>技术详情</summary>
+              <p>错误类型: ${error.name}</p>
+              <p>错误消息: ${error.message}</p>
+              <p>错误栈: ${error.stack ? error.stack.split('\n').slice(0, 3).join('<br>') : '无'}</p>
+            </details>
+          </div>
+        `;
+        showError(errorDetails);
+      } catch (e) {
+        console.error("显示错误信息时出错:", e);
+      }
+    } finally {
+      // 清除超时定时器
+      if (translationTimeout) {
+        clearTimeout(translationTimeout);
+        console.log("在finally中清除了全局超时定时器");
+      }
+      
+      const totalElapsedTime = (Date.now() - requestStartTime) / 1000;
+      console.log(`请求结束，总耗时: ${totalElapsedTime.toFixed(1)}秒`);
+      addApiStatusLog(`请求结束，总耗时: ${totalElapsedTime.toFixed(1)}秒`);
+      
+      isProcessing = false;
     }
-    
-    const totalElapsedTime = (Date.now() - requestStartTime) / 1000;
-    console.log(`请求处理完成，总耗时: ${totalElapsedTime.toFixed(1)}秒`);
-    addApiStatusLog(`请求处理完成，总耗时: ${totalElapsedTime.toFixed(1)}秒`, 'success');
-    
-    updateSidebarContent(text, explanation);
   } catch (error) {
     console.error("解释文本时出错:", error);
     addApiStatusLog(`解释文本时出错: ${error.message}`, 'error');
@@ -1840,57 +2086,96 @@ async function explainText(text) {
     } catch (e) {
       console.error("显示错误信息时出错:", e);
     }
-  } finally {
-    // 清除超时定时器
-    if (translationTimeout) {
-      clearTimeout(translationTimeout);
-      console.log("在finally中清除了全局超时定时器");
-    }
-    
-    const totalElapsedTime = (Date.now() - requestStartTime) / 1000;
-    console.log(`请求结束，总耗时: ${totalElapsedTime.toFixed(1)}秒`);
-    addApiStatusLog(`请求结束，总耗时: ${totalElapsedTime.toFixed(1)}秒`);
-    
-    isProcessing = false;
   }
 }
 
 // 重置插件状态
 function resetPluginState() {
-  console.log("Resetting plugin state");
+  console.log("Executing resetPluginState function"); // 调试日志
   
-  // 重置处理状态
-  isProcessing = false;
-  
-  // 隐藏侧边栏
-  if (sidebar) {
-    sidebar.classList.add('hidden');
-    isSidebarOpen = false;
-  }
-  
-  // 隐藏悬浮按钮
-  hideFloatingButton();
-  
-  // 重置侧边栏内容
-  if (sidebar) {
-    const content = sidebar.querySelector('.sidebar-content');
-    content.innerHTML = '<p>插件状态已重置。请选择英文文本并右键点击"用英语解释所选文本"</p>';
-  }
-  
-  // 显示重置成功消息
-  if (sidebar) {
-    const statusMessage = document.createElement('div');
-    statusMessage.className = 'status-message';
-    statusMessage.textContent = '插件状态已重置';
-    document.body.appendChild(statusMessage);
+  try {
+    // 重置处理状态
+    if (typeof isProcessing !== 'undefined') {
+      isProcessing = false;
+      console.log('Reset isProcessing to false'); // 调试日志
+    }
     
-    // 2秒后自动移除消息
-    setTimeout(() => {
-      if (statusMessage && statusMessage.parentNode) {
-        statusMessage.parentNode.removeChild(statusMessage);
+    // 隐藏和重置侧边栏
+    if (sidebar) {
+      console.log('Resetting sidebar'); // 调试日志
+      sidebar.classList.add('hidden');
+      
+      // 重置侧边栏内容
+      const content = sidebar.querySelector('.sidebar-content');
+      if (content) {
+        content.innerHTML = `
+          <div class="welcome-message">
+            <h4>插件已重置</h4>
+            <p>请选择英文文本开始使用</p>
+            <p style="font-size: 12px; color: #666; margin-top: 10px;">
+              重置时间: ${new Date().toLocaleTimeString()}
+            </p>
+          </div>
+        `;
+        console.log('Sidebar content reset'); // 调试日志
       }
-    }, 2000);
+    }
+    
+    // 重置侧边栏状态
+    if (typeof isSidebarOpen !== 'undefined') {
+      isSidebarOpen = false;
+      console.log('Reset isSidebarOpen to false'); // 调试日志
+    }
+    
+    // 隐藏悬浮按钮
+    hideFloatingButton();
+    console.log('Floating button hidden'); // 调试日志
+    
+    // 清除任何定时器
+    if (typeof translationTimeout !== 'undefined' && translationTimeout) {
+      clearTimeout(translationTimeout);
+      translationTimeout = null;
+      console.log('Translation timeout cleared'); // 调试日志
+    }
+    
+    // 显示重置成功的临时提示
+    showResetSuccessMessage();
+    
+    console.log("Plugin state reset completed successfully");
+    
+  } catch (error) {
+    console.error('Error in resetPluginState:', error);
+    throw error;
   }
+}
+
+// 显示重置成功消息的辅助函数
+function showResetSuccessMessage() {
+  const message = document.createElement('div');
+  message.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #4CAF50;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 2147483647;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  `;
+  message.textContent = '✓ English Explainer 已重置';
+  
+  document.body.appendChild(message);
+  
+  // 3秒后移除消息
+  setTimeout(() => {
+    if (message && message.parentNode) {
+      message.remove();
+    }
+  }, 3000);
 }
 
 // 创建悬浮按钮

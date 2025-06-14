@@ -3,6 +3,8 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('Popup页面加载完成'); // 调试日志1
+  
   const useApiToggle = document.getElementById('useApiToggle');
   const apiSettings = document.getElementById('apiSettings');
   const useFreeApiToggle = document.getElementById('useFreeApiToggle');
@@ -17,12 +19,47 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusDiv = document.getElementById('status');
   const openSidebarBtn = document.getElementById('openSidebarBtn');
   const testDeepseekApiBtn = document.getElementById('testDeepseekApiBtn');
+  // 新增：重置按钮事件处理
+  const resetPluginBtn = document.getElementById('resetPluginBtn');
+  console.log('Reset button element:', resetPluginBtn); // 调试日志
+  
+  if (resetPluginBtn) {
+    resetPluginBtn.addEventListener('click', function() {
+      console.log('Reset plugin button clicked'); // 调试日志
+      
+      // 先显示处理中状态
+      showStatus('正在重置...', 'info');
+      
+      // 发送重置消息到background
+      chrome.runtime.sendMessage({action: 'resetPlugin'}, function(response) {
+        console.log('Reset response:', response); // 调试日志
+        
+        if (chrome.runtime.lastError) {
+          console.error('Reset plugin error:', chrome.runtime.lastError);
+          showStatus('重置失败: ' + chrome.runtime.lastError.message, 'error');
+          return;
+        }
+        
+        if (response && response.success) {
+          showStatus('插件已重置', 'success');
+        } else {
+          showStatus('重置失败: ' + (response?.error || '未知错误'), 'error');
+        }
+      });
+    });
+  } else {
+    console.error('Reset button not found!'); // 调试日志
+  }
   
   // 加载保存的设置
   loadSettings();
   
   // 设置事件监听器
-  useApiToggle.addEventListener('change', toggleApiSettings);
+  useApiToggle.addEventListener('change', () => {
+    toggleApiSettings();
+    // 自动保存复选框状态
+    saveCheckboxState();
+  });
   useFreeApiToggle.addEventListener('change', toggleFreeApiSettings);
   apiType.addEventListener('change', toggleApiTypeSettings);
   saveBtn.addEventListener('click', saveSettings);
@@ -98,83 +135,87 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // 加载设置
   function loadSettings() {
-    chrome.storage.sync.get(
-      [
-        'useApi', 
-        'useFreeApi',
-        'apiType', 
-        'apiKey', 
-        'deepseekApiKey',
-        'deepseekModel'
-      ], 
-      (result) => {
-        if (result.useApi !== undefined) {
-          useApiToggle.checked = result.useApi;
-          toggleApiSettings();
-        }
-        
-        if (result.useFreeApi !== undefined) {
-          useFreeApiToggle.checked = result.useFreeApi;
-          toggleFreeApiSettings();
-        }
-        
-        if (result.apiType) {
-          apiType.value = result.apiType;
-          toggleApiTypeSettings();
-        }
-        
-        if (result.apiKey) {
-          apiKey.value = result.apiKey;
-        }
-        
-        if (result.deepseekApiKey) {
-          deepseekApiKey.value = result.deepseekApiKey;
-        }
-        
-        if (result.deepseekModel) {
-          deepseekModel.value = result.deepseekModel;
-        }
-      }
-    );
+    console.log('==== 加载保存的设置 ====');
+    chrome.storage.sync.get({
+      useApi: false,
+      useFreeApi: false,
+      apiType: 'deepseek',
+      apiKey: '',
+      deepseekApiKey: '',
+      deepseekModel: 'deepseek-chat'
+    }, (result) => {
+      console.log('加载设置:', result);
+      
+      useApiToggle.checked = result.useApi;
+      useFreeApiToggle.checked = result.useFreeApi;
+      
+      // 设置API类型
+      apiType.value = result.apiType;
+      
+      // 设置API密钥
+      if (result.apiKey) apiKey.value = result.apiKey;
+      if (result.deepseekApiKey) deepseekApiKey.value = result.deepseekApiKey;
+      if (result.deepseekModel) deepseekModel.value = result.deepseekModel;
+      
+      // 更新UI显示
+      toggleApiSettings();
+      toggleApiTypeSettings();
+    });
   }
   
-  // 保存设置
+  // 保存复选框状态的函数
+  function saveCheckboxState() {
+    const settings = {
+      useApi: useApiToggle.checked,
+      useFreeApi: useFreeApiToggle.checked
+    };
+    
+    chrome.storage.sync.set(settings, () => {
+      console.log('复选框状态已保存:', settings);
+      showStatus('设置已更新', 'success');
+    });
+  }
+  
+  // 保存API设置
   function saveSettings() {
     const settings = {
       useApi: useApiToggle.checked,
       useFreeApi: useFreeApiToggle.checked,
-      apiType: apiType.value
+      apiType: apiType.value,
+      apiKey: apiKey.value,
+      deepseekApiKey: deepseekApiKey.value,
+      deepseekModel: deepseekModel.value
     };
     
-    // 如果使用免费API，不需要验证其他设置
-    if (!settings.useFreeApi) {
-      // 根据API类型保存相应设置
-      if (apiType.value === 'openai') {
-        if (useApiToggle.checked && (!apiKey.value || !apiKey.value.startsWith('sk-'))) {
-          showStatus('请输入有效的OpenAI API密钥', 'error');
-          return;
-        }
-        settings.apiKey = apiKey.value;
-      } else if (apiType.value === 'deepseek') {
-        if (useApiToggle.checked && (!deepseekApiKey.value || !deepseekApiKey.value.startsWith('sk-'))) {
-          showStatus('请输入有效的DeepSeek API密钥', 'error');
-          return;
-        }
-        
-        settings.deepseekApiKey = deepseekApiKey.value;
-        settings.deepseekModel = deepseekModel.value;
+    // 验证设置
+    if (settings.useApi && !settings.useFreeApi) {
+      if (settings.apiType === 'openai' && (!settings.apiKey || !settings.apiKey.startsWith('sk-'))) {
+        showStatus('请输入有效的OpenAI API密钥', 'error');
+        return;
+      }
+      if (settings.apiType === 'deepseek' && (!settings.deepseekApiKey || !settings.deepseekApiKey.startsWith('sk-'))) {
+        showStatus('请输入有效的DeepSeek API密钥', 'error');
+        return;
       }
     }
     
-    // 保存到Chrome存储
+    // 保存设置
     chrome.storage.sync.set(settings, () => {
-      showStatus('设置已保存', 'success');
+      showStatus('所有设置已保存', 'success');
+      console.log('保存的设置:', settings);
     });
   }
   
   // 测试DeepSeek API连接
   async function testDeepseekApi() {
-    // 检查API密钥
+    // 获取状态显示元素
+    const statusDiv = document.getElementById('status');
+    if (!statusDiv) {
+      console.error('Status div not found!');
+      return;
+    }
+    
+    // 获取API密钥
     const apiKeyValue = deepseekApiKey.value;
     if (!apiKeyValue || !apiKeyValue.startsWith('sk-')) {
       showStatus('请输入有效的DeepSeek API密钥', 'error');
@@ -183,66 +224,96 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 显示测试中状态
     showStatus('正在测试API连接...', 'info');
-    
-    // 构建请求
-    const apiUrl = "https://api.deepseek.com/chat/completions";
-    const model = deepseekModel.value || "deepseek-chat";
+    console.log('开始测试API连接');
     
     try {
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKeyValue}`
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: "user",
-              content: "Hello, this is a test message. Please respond with 'API connection successful'."
-            }
-          ],
-          max_tokens: 20
-        })
+      // 使用background script来处理API请求
+      const response = await chrome.runtime.sendMessage({
+        action: 'testDeepseekApi',
+        data: {
+          apiKey: apiKeyValue,
+          model: deepseekModel.value || 'deepseek-chat'
+        }
       });
       
-      if (!response.ok) {
-        let errorMessage = `API请求失败 (${response.status})`;
-        
-        try {
-          const errorData = await response.json();
-          errorMessage = `${errorMessage}: ${errorData.error?.message || JSON.stringify(errorData)}`;
-        } catch (e) {
-          const errorText = await response.text();
-          errorMessage = `${errorMessage}: ${errorText || '未知错误'}`;
-        }
-        
-        showStatus(errorMessage, 'error');
-        return;
-      }
+      console.log('API测试响应:', response);
       
-      const data = await response.json();
-      
-      if (data.choices && data.choices[0] && data.choices[0].message) {
-        showStatus(`API连接成功！响应: "${data.choices[0].message.content}"`, 'success');
+      if (response.success) {
+        showStatus('API连接测试成功！', 'success');
       } else {
-        showStatus('API连接成功，但响应格式不正确', 'warning');
+        showStatus(`API连接测试失败: ${response.error || '未知错误'}`, 'error');
       }
     } catch (error) {
+      console.error('API测试错误:', error);
       showStatus(`API连接测试失败: ${error.message}`, 'error');
     }
   }
   
-  // 显示状态消息
+  // 修改显示状态的函数
   function showStatus(message, type) {
+    const statusDiv = document.getElementById('status');
+    if (!statusDiv) {
+      console.error('Status div not found!');
+      return;
+    }
+    
+    console.log(`显示状态: ${message} (${type})`); // 添加日志
+    
     statusDiv.textContent = message;
     statusDiv.className = `status ${type}`;
     statusDiv.style.display = 'block';
     
-    // 3秒后自动隐藏
-    setTimeout(() => {
-      statusDiv.style.display = 'none';
-    }, 3000);
+    // 设置样式
+    let bgColor, textColor;
+    switch(type) {
+      case 'success':
+        bgColor = '#e8f5e8';
+        textColor = '#2e7d32';
+        break;
+      case 'error':
+        bgColor = '#ffebee';
+        textColor = '#d32f2f';
+        break;
+      case 'info':
+        bgColor = '#e3f2fd';
+        textColor = '#1976d2';
+        break;
+      default:
+        bgColor = '#f5f5f5';
+        textColor = '#333';
+    }
+    
+    statusDiv.style.cssText = `
+      display: block !important;
+      margin-top: 10px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      text-align: center;
+      font-size: 14px;
+      background: ${bgColor};
+      color: ${textColor};
+      border: 1px solid ${textColor}33;
+    `;
+    
+    // 如果不是错误消息，3秒后自动隐藏
+    if (type !== 'error') {
+      setTimeout(() => {
+        if (statusDiv) {
+          statusDiv.style.display = 'none';
+        }
+      }, 3000);
+    }
+  }
+});
+
+// 添加storage变化监听器
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  console.log('==== Storage变化监听 ====');
+  for (let [key, { oldValue, newValue }] of Object.entries(changes)) {
+    console.log(
+      `Storage key "${key}" in "${namespace}" changed:`,
+      '\n旧值:', oldValue,
+      '\n新值:', newValue
+    );
   }
 }); 
